@@ -1,0 +1,6 @@
+apiVersion: operator.bobfintech.com/v1alpha1
+kind: RedisBackup
+metadata:
+  name: redisbackup-sample
+spec:
+  # Add fields here
