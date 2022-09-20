@@ -71,32 +71,41 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	podlist := corev1.PodList{}
+	masterPvc := ""
 	backupPvc := ""
-	error := r.Client.List(ctx, &podlist, client.MatchingLabels{"app.kubernetes.io/managed-by": "redis-operator", "app.kubernetes.io/name": "wqj", "app.kubernetes.io/part-of": "redis-failover", "redisfailovers-role": "slave"})
+	error := r.Client.List(ctx, &podlist, client.MatchingLabels{"app.kubernetes.io/component": "redis", "app.kubernetes.io/managed-by": "redis-operator", "app.kubernetes.io/name": backupInstance.Spec.ClusterName, "app.kubernetes.io/part-of": "redis-failover"})
 	if error != nil {
 		fmt.Println(error)
 	} else {
 		for k, v := range podlist.Items {
-			if v.Status.Phase == "Running" {
-				for _, i := range v.Spec.Volumes {
-					if i.Name == "redisfailover-persistent-keep-data" {
-						backupPvc = i.VolumeSource.PersistentVolumeClaim.ClaimName
-						fmt.Println(k, v.ObjectMeta.Name, i.VolumeSource.PersistentVolumeClaim.ClaimName)
-					}
+			fmt.Println(podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"])
+			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
+				masterPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+			}
+			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
+				if v.Status.Phase == "Running" {
+					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					fmt.Println(k, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					break
+				} else {
+					backupPvc = ""
+					fmt.Println("Slave Pod: " + v.ObjectMeta.Name + " is not running")
 				}
-				break
-			} else {
-				backupPvc = ""
-				fmt.Println("Slave Pod: " + v.ObjectMeta.Name + " is not running")
+			}
+			if backupPvc == "" {
+				if v.Status.Phase == "Running" {
+					backupPvc = masterPvc
+				} else {
+					fmt.Println("no Running pod to backup")
+				}
 			}
 		}
 	}
-	if backupPvc == "" {
-	}
+	fmt.Println("backup PVC is : " + backupPvc)
 
 	err = r.Client.Get(ctx, backupJobGet, backupJob)
 	if errors.IsNotFound(err) {
-		job := utils.MakeJob(*backupInstance)
+		job := utils.MakeJob(backupPvc, *backupInstance)
 		if err := controllerutil.SetControllerReference(backupInstance, job, r.Scheme); err != nil {
 			msg := fmt.Sprintf("set controllerReference for Job %s/%s failed", job.Namespace, job.Name)
 			log.Log.Error(err, msg)

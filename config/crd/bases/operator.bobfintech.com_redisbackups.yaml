@@ -36,9 +36,7 @@ spec:
           spec:
             description: RedisBackupSpec defines the desired state of RedisBackup
             properties:
-              foo:
-                description: Foo is an example field of RedisBackup. Edit redisbackup_types.go
-                  to remove/update
+              clusterName:
                 type: string
             type: object
           status:
