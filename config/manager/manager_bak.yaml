@@ -1,8 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  labels:
+    control-plane: redis-backup-operator
+  name: system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: redis-backup-operator
-  namespace: default
+  namespace: system
   labels:
     control-plane: redis-backup-operator
 spec:
@@ -20,8 +27,8 @@ spec:
       containers:
       - command:
         - /manager
-#        args:
-#        - --leader-elect
+        args:
+        - --leader-elect
         image: 172.16.5.171/redis/redis-backup-operator:v1.0.0
         name: redis-backup-operator
         securityContext:

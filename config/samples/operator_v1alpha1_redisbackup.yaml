@@ -1,7 +1,7 @@
 apiVersion: operator.bobfintech.com/v1alpha1
 kind: RedisBackup
 metadata:
-  name: redisbackup2
+  name: redisbackup
 spec:
   # Add fields here
   clusterName: test

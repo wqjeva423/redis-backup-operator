@@ -26,7 +26,7 @@ func MakeJob(backupPvc string, backupInstance operatorv1alpha1.RedisBackup) *bat
 
 	container := corev1.Container{}
 	container.Name = "redis-backup"
-	container.Image = "redis:6.2.6"
+	container.Image = "172.16.5.171/mysql/mysql-operator-sidecar-5.7:v1.2.2"
 	//container.Env = append(initcontainer.Env, corev1.EnvVar{Name: "registrypassword", Value: buildInstance.Spec.Registry.Password})
 	container.Command = append(container.Command, "/bin/bash", "-c")
 	shell := "tar -zcvf " + backupName + " *.rdb;"
