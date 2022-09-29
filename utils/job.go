@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-func MakeJob(backupPvc string, backupInstance operatorv1alpha1.RedisBackup) *batch.Job {
+func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup) *batch.Job {
 
-	backupName := time.Now().Format("20060102150405") + ".tar.gz"
+	backupName := clusterName + time.Now().Format("20060102150405") + ".tar.gz"
 	backofflimit := int32(1)
 	activedeadlineseconds := int64(1800)
 	ttlsecondsafterfinished := int32(3600)
@@ -26,14 +26,16 @@ func MakeJob(backupPvc string, backupInstance operatorv1alpha1.RedisBackup) *bat
 
 	container := corev1.Container{}
 	container.Name = "redis-backup"
-	container.Image = "172.16.5.171/mysql/mysql-operator-sidecar-5.7:v1.2.2"
+	container.Image = "172.16.5.171/redis/s3cmd:latest"
+	//container.Image = "d3fk/s3cmd:latest"
 	//container.Env = append(initcontainer.Env, corev1.EnvVar{Name: "registrypassword", Value: buildInstance.Spec.Registry.Password})
-	container.Command = append(container.Command, "/bin/bash", "-c")
-	shell := "tar -zcvf " + backupName + " *.rdb;"
-	rcloneShell := "rclone --config /tmp/rclone.conf moveto " + backupName + " s3://velero/" + backupName + " --s3-access-key-id " + constants.S3AccessKeyId + " --s3-secret-access-key " + constants.S3SecretAccessKey + " --s3-region " + constants.S3Region + " --s3-endpoint " + constants.S3Endpoint + " --s3-provider " + constants.S3Provider + ";"
-	container.Args = append(container.Args, shell+rcloneShell)
+	container.Command = append(container.Command, "sh", "-c")
+	shell1 := "cd " + constants.DataDir + ";tar -zcvf " + backupName + " *.*;"
+	shell2 := "s3cmd --no-ssl --region=" + constants.S3Region + " --host=" + constants.S3Endpoint + " --host-bucket=" + constants.S3Endpoint + " --access_key=" + constants.S3AccessKey + " --secret_key=" + constants.S3SecretKey + " put " + backupName + " s3://" + constants.S3Bucket + "/;"
+	shell3 := "rm -rf " + backupName + ";"
+	container.Args = append(container.Args, shell1+shell2+shell3)
 	log.Log.Info("backup create succeed: " + backupName)
-	log.Log.Info("rclone command is: " + shell + rcloneShell)
+	log.Log.Info("rclone command is: " + shell1 + shell2 + shell3)
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "data", MountPath: "/data"})
 
 	job := &batch.Job{}

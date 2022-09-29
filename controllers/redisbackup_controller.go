@@ -109,7 +109,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	err = r.Client.Get(ctx, backupJobGet, backupJob)
 	if errors.IsNotFound(err) {
-		job := utils.MakeJob(backupPvc, *backupInstance)
+		job := utils.MakeJob(backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
 		if err := controllerutil.SetControllerReference(backupInstance, job, r.Scheme); err != nil {
 			msg := fmt.Sprintf("set controllerReference for Job %s/%s failed", job.Namespace, job.Name)
 			log.Log.Error(err, msg)
