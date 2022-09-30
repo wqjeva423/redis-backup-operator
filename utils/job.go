@@ -11,7 +11,7 @@ import (
 
 func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup) *batch.Job {
 
-	backupName := clusterName + time.Now().Format("20060102150405") + ".tar.gz"
+	backupName := "redis-" + clusterName + "-" + time.Now().Format("20060102150405") + ".tar.gz"
 	backofflimit := int32(1)
 	activedeadlineseconds := int64(1800)
 	ttlsecondsafterfinished := int32(3600)
@@ -28,11 +28,40 @@ func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.Redi
 	container.Name = "redis-backup"
 	container.Image = "172.16.5.171/redis/s3cmd:latest"
 	//container.Image = "d3fk/s3cmd:latest"
+
 	//container.Env = append(initcontainer.Env, corev1.EnvVar{Name: "registrypassword", Value: buildInstance.Spec.Registry.Password})
+	boolTrue := true
+	container.Env = []corev1.EnvVar{
+		{
+			Name: "S3Region",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "redis-backup-secret",
+					},
+					Key:      "S3Region",
+					Optional: &boolTrue,
+				},
+			},
+		},
+		{
+			Name: "S3Endpoint",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: "redis-backup-secret",
+					},
+					Key:      "S3Endpoint",
+					Optional: &boolTrue,
+				},
+			},
+		},
+	}
+
 	container.Command = append(container.Command, "sh", "-c")
-	shell1 := "cd " + constants.DataDir + ";tar -zcvf " + backupName + " *.*;"
-	shell2 := "s3cmd --no-ssl --region=" + constants.S3Region + " --host=" + constants.S3Endpoint + " --host-bucket=" + constants.S3Endpoint + " --access_key=" + constants.S3AccessKey + " --secret_key=" + constants.S3SecretKey + " put " + backupName + " s3://" + constants.S3Bucket + "/;"
-	shell3 := "rm -rf " + backupName + ";"
+	shell1 := "cd " + constants.DataDir + ";tar -zcvf /tmp/" + backupName + " *.*;"
+	shell2 := "s3cmd --no-ssl --region=" + constants.S3Region + " --host=" + constants.S3Endpoint + " --host-bucket=" + constants.S3Endpoint + " --access_key=" + constants.S3AccessKey + " --secret_key=" + constants.S3SecretKey + " put /tmp/" + backupName + " s3://" + constants.S3Bucket + "/;"
+	shell3 := "rm -rf /tmp/" + backupName + ";"
 	container.Args = append(container.Args, shell1+shell2+shell3)
 	log.Log.Info("backup create succeed: " + backupName)
 	log.Log.Info("rclone command is: " + shell1 + shell2 + shell3)

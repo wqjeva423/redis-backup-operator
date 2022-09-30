@@ -78,6 +78,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	masterPvc := ""
 	backupPvc := ""
 	error := r.Client.List(ctx, &podlist, client.MatchingLabels{"app.kubernetes.io/component": "redis", "app.kubernetes.io/managed-by": "redis-operator", "app.kubernetes.io/name": backupInstance.Spec.ClusterName, "app.kubernetes.io/part-of": "redis-failover"})
+	fmt.Println(error)
 	if error != nil {
 		fmt.Println(error)
 	} else {
