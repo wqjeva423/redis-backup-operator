@@ -29,6 +29,10 @@ type RedisBackupSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	ClusterName string `json:"clusterName,omitempty"`
+
+	BackupSecretName string `json:"backupSecretName,omitempty"`
+
+	ExpireDays string `json:"expireDays,omitempty"`
 }
 
 // RedisBackupStatus defines the observed state of RedisBackup

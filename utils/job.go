@@ -37,7 +37,7 @@ func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.Redi
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "redis-backup-secret",
+						Name: backupInstance.Spec.BackupSecretName,
 					},
 					Key:      "S3Region",
 					Optional: &boolTrue,
@@ -49,9 +49,45 @@ func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.Redi
 			ValueFrom: &corev1.EnvVarSource{
 				SecretKeyRef: &corev1.SecretKeySelector{
 					LocalObjectReference: corev1.LocalObjectReference{
-						Name: "redis-backup-secret",
+						Name: backupInstance.Spec.BackupSecretName,
 					},
 					Key:      "S3Endpoint",
+					Optional: &boolTrue,
+				},
+			},
+		},
+		{
+			Name: "S3AccessKey",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: backupInstance.Spec.BackupSecretName,
+					},
+					Key:      "S3AccessKey",
+					Optional: &boolTrue,
+				},
+			},
+		},
+		{
+			Name: "S3SecretKey",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: backupInstance.Spec.BackupSecretName,
+					},
+					Key:      "S3SecretKey",
+					Optional: &boolTrue,
+				},
+			},
+		},
+		{
+			Name: "S3Bucket",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: backupInstance.Spec.BackupSecretName,
+					},
+					Key:      "S3Bucket",
 					Optional: &boolTrue,
 				},
 			},
@@ -60,10 +96,10 @@ func MakeJob(backupPvc, clusterName string, backupInstance operatorv1alpha1.Redi
 
 	container.Command = append(container.Command, "sh", "-c")
 	shell1 := "cd " + constants.DataDir + ";tar -zcvf /tmp/" + backupName + " *.*;"
-	shell2 := "s3cmd --no-ssl --region=" + constants.S3Region + " --host=" + constants.S3Endpoint + " --host-bucket=" + constants.S3Endpoint + " --access_key=" + constants.S3AccessKey + " --secret_key=" + constants.S3SecretKey + " put /tmp/" + backupName + " s3://" + constants.S3Bucket + "/;"
+	shell2 := "s3cmd --no-ssl --region=$(S3Region) --host=$(S3Endpoint) --host-bucket=$(S3Endpoint) --access_key=$(S3AccessKey) --secret_key=$(S3SecretKey) put /tmp/" + backupName + " s3://$(S3Bucket)/;"
 	shell3 := "rm -rf /tmp/" + backupName + ";"
 	container.Args = append(container.Args, shell1+shell2+shell3)
-	log.Log.Info("backup create succeed: " + backupName)
+	log.Log.Info("backup file is: " + backupName)
 	log.Log.Info("rclone command is: " + shell1 + shell2 + shell3)
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "data", MountPath: "/data"})
 

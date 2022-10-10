@@ -68,45 +68,50 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return reconcile.Result{}, nil
 		}
 	}
+
+	podlist := corev1.PodList{}
+	backupPvc := ""
+	error := r.Client.List(ctx, &podlist, client.MatchingLabels{"app.kubernetes.io/component": "redis", "app.kubernetes.io/managed-by": "redis-operator", "app.kubernetes.io/name": backupInstance.Spec.ClusterName, "app.kubernetes.io/part-of": "redis-failover"})
+	if error != nil {
+		msg := fmt.Sprintf("Get Redis pod error!")
+		log.Log.Error(error, msg)
+	} else {
+		for k, v := range podlist.Items {
+			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
+				if v.Status.Phase == "Running" {
+					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					msg := fmt.Sprintf("Backup Slave Pod is %s,Pvc is %s", v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					log.Log.Info(msg)
+					break
+				} else {
+					backupPvc = ""
+					msg := fmt.Sprintf("Slave Pod %s is not running", v.ObjectMeta.Name)
+					log.Log.Info(msg)
+				}
+			}
+		}
+	}
+	if backupPvc == "" {
+		for k, v := range podlist.Items {
+			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
+				if v.Status.Phase == "Running" {
+					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					msg := fmt.Sprintf("Backup on Master Pod %s,Pvc is %s", v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					log.Log.Info(msg)
+					break
+				} else {
+					msg := fmt.Sprintf("No Running Pod to Backup!")
+					log.Log.Info(msg)
+				}
+			}
+		}
+	}
+
 	backupJob := &batch.Job{}
 	backupJobGet := types.NamespacedName{
 		Namespace: req.Namespace,
 		Name:      backupInstance.Name + "-job",
 	}
-
-	podlist := corev1.PodList{}
-	masterPvc := ""
-	backupPvc := ""
-	error := r.Client.List(ctx, &podlist, client.MatchingLabels{"app.kubernetes.io/component": "redis", "app.kubernetes.io/managed-by": "redis-operator", "app.kubernetes.io/name": backupInstance.Spec.ClusterName, "app.kubernetes.io/part-of": "redis-failover"})
-	fmt.Println(error)
-	if error != nil {
-		fmt.Println(error)
-	} else {
-		for k, v := range podlist.Items {
-			fmt.Println(podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"])
-			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
-				masterPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-			}
-			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
-				if v.Status.Phase == "Running" {
-					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					fmt.Println(k, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
-					break
-				} else {
-					backupPvc = ""
-					fmt.Println("Slave Pod: " + v.ObjectMeta.Name + " is not running")
-				}
-			}
-			if backupPvc == "" {
-				if v.Status.Phase == "Running" {
-					backupPvc = masterPvc
-				} else {
-					fmt.Println("no Running pod to backup")
-				}
-			}
-		}
-	}
-	fmt.Println("backup PVC is : " + backupPvc)
 
 	err = r.Client.Get(ctx, backupJobGet, backupJob)
 	if errors.IsNotFound(err) {
@@ -126,7 +131,6 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{Requeue: true}, err
 		}
 	}
-
 	return ctrl.Result{}, nil
 }
 

@@ -5,3 +5,5 @@ metadata:
 spec:
   # Add fields here
   clusterName: test
+  backupSecretName: redis-backup-secret333
+  expireDays: 30

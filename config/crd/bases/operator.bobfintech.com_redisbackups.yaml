@@ -36,6 +36,8 @@ spec:
           spec:
             description: RedisBackupSpec defines the desired state of RedisBackup
             properties:
+              backupSecretName:
+                type: string
               clusterName:
                 type: string
             type: object
