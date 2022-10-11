@@ -6,4 +6,6 @@ spec:
   # Add fields here
   clusterName: test
   backupSecretName: redis-backup-secret333
-  expireDays: 30
+  backupURL: s3://velero/
+  expireDays: "1"
+  backupSchedule: "* * * * *"

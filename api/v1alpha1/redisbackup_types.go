@@ -33,6 +33,10 @@ type RedisBackupSpec struct {
 	BackupSecretName string `json:"backupSecretName,omitempty"`
 
 	ExpireDays string `json:"expireDays,omitempty"`
+
+	BackupURL string `json:"backupURL,omitempty"`
+
+	BackupSchedule string `json:"backupSchedule,omitempty"`
 }
 
 // RedisBackupStatus defines the observed state of RedisBackup

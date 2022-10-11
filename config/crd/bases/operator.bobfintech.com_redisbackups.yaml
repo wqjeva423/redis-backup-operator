@@ -36,9 +36,15 @@ spec:
           spec:
             description: RedisBackupSpec defines the desired state of RedisBackup
             properties:
+              backupSchedule:
+                type: string
               backupSecretName:
                 type: string
+              backupURL:
+                type: string
               clusterName:
+                type: string
+              expireDays:
                 type: string
             type: object
           status:
