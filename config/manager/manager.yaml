@@ -22,8 +22,11 @@ spec:
         - /manager
 #        args:
 #        - --leader-elect
-        image: 172.16.5.171/redis/redis-backup-operator:v1.0.0
+        image: redis-backup-operator:v1.1.8
         name: redis-backup-operator
+        env:
+          - name: backup_image
+            value: '172.16.5.171/redis/s3cmd:latest'
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:

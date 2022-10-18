@@ -19,25 +19,23 @@ package controllers
 import (
 	operatorv1alpha1 "RedisBackupOperator/api/v1alpha1"
 	"RedisBackupOperator/utils"
+	"RedisBackupOperator/utils/constants"
 	"context"
 	"fmt"
 	batch "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
+	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
-)
-
-const (
-	cronJobKind           = "CronJob"
-	cronJobVersionV1beta1 = "batch/v1beta1"
 )
 
 // RedisBackupReconciler reconciles a RedisBackup object
@@ -50,6 +48,7 @@ type RedisBackupReconciler struct {
 //+kubebuilder:rbac:groups=operator.bobfintech.com,resources=redisbackups/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=operator.bobfintech.com,resources=redisbackups/finalizers,verbs=update
 //+kubebuilder:rbac:groups=batch,resources=jobs,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=batch,resources=cronjobs,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumes,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=core,resources=pods,verbs=get;list;watch;create;update;patch;delete
@@ -87,117 +86,148 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		msg := fmt.Sprintf("Get Redis pod error!")
 		log.Log.Error(error, msg)
 	} else {
-		for k, v := range podlist.Items {
-			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
-				if v.Status.Phase == "Running" {
-					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					msg := fmt.Sprintf("Backup Slave Pod is %s,Pvc is %s", v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
-					log.Log.Info(msg)
-					break
-				} else {
-					backupPvc = ""
-					msg := fmt.Sprintf("Slave Pod %s is not running", v.ObjectMeta.Name)
-					log.Log.Info(msg)
-				}
-			}
-		}
-	}
-	if backupPvc == "" {
+		//for k, v := range podlist.Items {
+		//	if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
+		//		if v.Status.Phase == "Running" {
+		//			backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+		//			msg := fmt.Sprintf("Cluster %s: Backup Slave Pod is %s,Pvc is %s", backupInstance.Spec.ClusterName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+		//			log.Log.Info(msg)
+		//			break
+		//		} else {
+		//			backupPvc = ""
+		//			msg := fmt.Sprintf("Cluster %s: Slave Pod %s is not running", backupInstance.Spec.ClusterName, v.ObjectMeta.Name)
+		//			log.Log.Info(msg)
+		//		}
+		//	}
+		//}
 		for k, v := range podlist.Items {
 			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
 				if v.Status.Phase == "Running" {
 					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					msg := fmt.Sprintf("Backup on Master Pod %s,Pvc is %s", v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					msg := fmt.Sprintf("Cluster %s: Backup on Master Pod %s,Pvc is %s", backupInstance.Spec.ClusterName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
 					log.Log.Info(msg)
 					break
 				} else {
-					msg := fmt.Sprintf("No Running Pod to Backup!")
+					msg := fmt.Sprintf("Cluster %s: No Running Pod to Backup!", backupInstance.Spec.ClusterName)
 					log.Log.Info(msg)
+					return ctrl.Result{}, nil
 				}
 			}
 		}
-	}
 
-	// 判断是否周期执行
-	if len(backupInstance.Spec.BackupSchedule) == 0 {
-		// 如果BackupSchedule为空，则创建单次备份JOB
-		backupJob := &batch.Job{}
-		backupJobGet := types.NamespacedName{
-			Namespace: req.Namespace,
-			Name:      backupInstance.Name + "-job",
-		}
-
-		err = r.Client.Get(ctx, backupJobGet, backupJob)
-		if errors.IsNotFound(err) {
-			job := utils.MakeJob(backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
-			if err := controllerutil.SetControllerReference(backupInstance, job, r.Scheme); err != nil {
-				msg := fmt.Sprintf("set controllerReference for Job %s/%s failed", job.Namespace, job.Name)
-				log.Log.Error(err, msg)
-				return ctrl.Result{Requeue: true}, err
-			}
-
-			msg := fmt.Sprintf("create job %s/%s", job.Namespace, job.Name)
+		if backupPvc == "" {
+			msg := fmt.Sprintf("Cluster %s: No master found!", backupInstance.Spec.ClusterName)
 			log.Log.Info(msg)
-			err = r.Client.Create(context.TODO(), job)
-			if err != nil {
-				msg := fmt.Sprintf("create job %s/%s error!", job.Namespace, job.Name)
-				log.Log.Error(err, msg)
-				return ctrl.Result{Requeue: true}, err
-			}
+			return ctrl.Result{}, nil
 		}
-	} else {
-		// 判断Cronjob版本是v1 or v1beta1
-		cronJobVersion := getCronJobVersion()
-		if cronJobVersion == cronJobVersionV1beta1 {
 
-			// cronjob版本为v1beta1，则使用v1beta1 APi
-			backupCronJob := &batchv1beta1.CronJob{}
-			backupCronJobGet := types.NamespacedName{
+		// 判断是否周期执行
+		if len(backupInstance.Spec.BackupSchedule) == 0 {
+			// 如果BackupSchedule为空，则创建单次备份JOB
+			backupJob := &batch.Job{}
+			jobName := backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-job"
+			backupJobGet := types.NamespacedName{
 				Namespace: req.Namespace,
-				Name:      backupInstance.Name + "-cronjob",
+				Name:      jobName,
 			}
-			err = r.Client.Get(ctx, backupCronJobGet, backupCronJob)
+
+			err = r.Client.Get(ctx, backupJobGet, backupJob)
 			if errors.IsNotFound(err) {
-				cronjob := utils.MakeCronJobV1beta1(backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
-				if err := controllerutil.SetControllerReference(backupInstance, cronjob, r.Scheme); err != nil {
-					msg := fmt.Sprintf("set controllerReference for CronJob %s/%s failed", cronjob.Namespace, cronjob.Name)
+				job := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, "", backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				if err := controllerutil.SetControllerReference(backupInstance, job, r.Scheme); err != nil {
+					msg := fmt.Sprintf("set controllerReference for Job %s/%s failed", req.Namespace, jobName)
 					log.Log.Error(err, msg)
 					return ctrl.Result{Requeue: true}, err
 				}
 
-				msg := fmt.Sprintf("create cronjob %s/%s", cronjob.Namespace, cronjob.Name)
+				msg := fmt.Sprintf("create job %s/%s", req.Namespace, jobName)
 				log.Log.Info(msg)
-				err = r.Client.Create(context.TODO(), cronjob)
+				err = r.Client.Create(context.TODO(), job)
 				if err != nil {
-					msg := fmt.Sprintf("create cronjob %s/%s error!", cronjob.Namespace, cronjob.Name)
+					msg := fmt.Sprintf("create job %s/%s error!", req.Namespace, jobName)
 					log.Log.Error(err, msg)
 					return ctrl.Result{Requeue: true}, err
 				}
 			}
 		} else {
-			// cronjob版本为v1，使用v1 API
-			backupCronJob := &batch.CronJob{}
+			var backupCronJob client.Object
+			// 判断Cronjob版本是v1 or v1beta1
+			cronJobVersion := getCronJobVersion()
+			if cronJobVersion == constants.CronJobVersionV1beta1 {
+				// cronjob版本为v1beta1，则使用v1beta1 APi
+				backupCronJob = &batchv1beta1.CronJob{}
+			} else {
+				// cronjob版本为v1，使用v1 API
+				backupCronJob = &batch.CronJob{}
+			}
+
+			cronJobName := backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-cronjob"
 			backupCronJobGet := types.NamespacedName{
 				Namespace: req.Namespace,
-				Name:      backupInstance.Name + "-cronjob",
+				Name:      cronJobName,
 			}
 
 			err = r.Client.Get(ctx, backupCronJobGet, backupCronJob)
+			//var found interface{}
 			if errors.IsNotFound(err) {
-				cronjob := utils.MakeCronJob(backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				cronjob := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
 				if err := controllerutil.SetControllerReference(backupInstance, cronjob, r.Scheme); err != nil {
-					msg := fmt.Sprintf("set controllerReference for CronJob %s/%s failed", cronjob.Namespace, cronjob.Name)
+					msg := fmt.Sprintf("set controllerReference for CronJob %s/%s failed", req.Namespace, cronJobName)
 					log.Log.Error(err, msg)
 					return ctrl.Result{Requeue: true}, err
 				}
 
-				msg := fmt.Sprintf("create cronjob %s/%s", cronjob.Namespace, cronjob.Name)
+				msg := fmt.Sprintf("create cronjob %s/%s", req.Namespace, cronJobName)
 				log.Log.Info(msg)
 				err = r.Client.Create(context.TODO(), cronjob)
 				if err != nil {
-					msg := fmt.Sprintf("create cronjob %s/%s error!", cronjob.Namespace, cronjob.Name)
+					msg := fmt.Sprintf("create cronjob %s/%s error!", req.Namespace, cronJobName)
 					log.Log.Error(err, msg)
 					return ctrl.Result{Requeue: true}, err
+				}
+			} else if err != nil {
+				msg := fmt.Sprintf("failed to get cronjob %s/%s error!", req.Namespace, cronJobName)
+				log.Log.Error(err, msg)
+
+				return ctrl.Result{Requeue: true}, err
+			} else {
+				cronjob := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				if cronJobVersion == constants.CronJobVersionV1beta1 {
+					_, found, err := utils.ExistCronJobV1beta1(cronJobName, req.Namespace, r.Client)
+					if err != nil {
+						msg := fmt.Sprintf("found cronjob %s/%s error!", req.Namespace, cronJobName)
+						log.Log.Error(err, msg)
+						return ctrl.Result{Requeue: true}, err
+					}
+					backupPvcOld := found.Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					if !reflect.DeepEqual(backupPvc, backupPvcOld) {
+						msg := fmt.Sprintf("rebuild cronjob %s/%s", req.Namespace, cronJobName)
+						log.Log.Info(msg)
+						if err := r.Client.Delete(context.TODO(), cronjob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+							msg := fmt.Sprintf("rebuild cronjob %s/%s error", req.Namespace, cronJobName)
+							log.Log.Error(err, msg)
+							return ctrl.Result{Requeue: true}, err
+						}
+						return ctrl.Result{}, nil
+					}
+				} else {
+					_, found, err := utils.ExistCronJob(cronJobName, req.Namespace, r.Client)
+					if err != nil {
+						msg := fmt.Sprintf("found cronjob %s/%s error!", req.Namespace, cronJobName)
+						log.Log.Error(err, msg)
+						return ctrl.Result{Requeue: true}, err
+					}
+					backupPvcOld := found.Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					if !reflect.DeepEqual(backupPvc, backupPvcOld) {
+						msg := fmt.Sprintf("rebuild cronjob %s/%s", req.Namespace, cronJobName)
+						log.Log.Info(msg)
+						if err := r.Client.Delete(context.TODO(), cronjob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+							msg := fmt.Sprintf("rebuild cronjob %s/%s error", req.Namespace, cronJobName)
+							log.Log.Error(err, msg)
+							return ctrl.Result{Requeue: true}, err
+						}
+						return ctrl.Result{}, nil
+					}
 				}
 			}
 		}
@@ -222,7 +252,7 @@ func getCronJobVersion() string {
 		groupVersion := singleAPIResourceList.GroupVersion
 		// APIResources字段是个切片，里面是当前GroupVersion下的所有资源
 		for _, singleAPIResource := range singleAPIResourceList.APIResources {
-			if singleAPIResource.Kind == cronJobKind {
+			if singleAPIResource.Kind == constants.CronJobKind {
 				version = groupVersion
 			}
 		}
@@ -232,7 +262,16 @@ func getCronJobVersion() string {
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *RedisBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		For(&operatorv1alpha1.RedisBackup{}).
-		Complete(r)
+	cronJobVersion := getCronJobVersion()
+	if cronJobVersion == constants.CronJobVersionV1beta1 {
+		return ctrl.NewControllerManagedBy(mgr).
+			For(&operatorv1alpha1.RedisBackup{}).
+			Owns(&batchv1beta1.CronJob{}).
+			Complete(r)
+	} else {
+		return ctrl.NewControllerManagedBy(mgr).
+			For(&operatorv1alpha1.RedisBackup{}).
+			Owns(&batch.CronJob{}).
+			Complete(r)
+	}
 }
