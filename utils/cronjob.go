@@ -13,9 +13,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func MakeCronJob(backupSchedule, cronJobVersion, backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup) client.Object {
+func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup) client.Object {
 
-	backupName := "redis-bak-" + clusterName + "-$(date '+%Y%m%d%H%M%S').tar.gz"
+	//backupName := "redis-bak-" + clusterName + "-$bak_time.tar.gz"
 	backupImg := GetEnvDefault("backup_image", "172.16.5.171/redis/s3cmd:latest")
 	backofflimit := int32(1)
 	activedeadlineseconds := int64(1800)
@@ -96,21 +96,41 @@ func MakeCronJob(backupSchedule, cronJobVersion, backupPvc, clusterName string, 
 				},
 			},
 		},
+		{
+			Name: "redisPass",
+			ValueFrom: &corev1.EnvVarSource{
+				SecretKeyRef: &corev1.SecretKeySelector{
+					LocalObjectReference: corev1.LocalObjectReference{
+						Name: backupInstance.Spec.ClusterName + "-redis-auth",
+					},
+					Key:      "password",
+					Optional: &boolTrue,
+				},
+			},
+		},
+		{
+			Name:  "objectName",
+			Value: backupInstance.Name,
+		},
+		{
+			Name:  "redisClusterName",
+			Value: backupInstance.Spec.ClusterName,
+		},
+		{
+			Name:  "backupURL",
+			Value: backupInstance.Spec.BackupURL,
+		},
 	}
 
 	container.Command = append(container.Command, "sh", "-c")
-	shTar := "cd /data;tar -zcvf /tmp/" + backupName + " *.*;"
-	shS3put := "s3cmd --no-ssl --region=$(S3Region) --host=$(S3Endpoint) --host-bucket=$(S3Endpoint) --access_key=$(S3AccessKey) --secret_key=$(S3SecretKey) put /tmp/redis-bak-* " + backupInstance.Spec.BackupURL + ";"
-	//shS3expire := "s3cmd --no-ssl --region=$(S3Region) --host=$(S3Endpoint) --host-bucket=$(S3Endpoint) --access_key=$(S3AccessKey) --secret_key=$(S3SecretKey) expire " + backupInstance.Spec.BackupURL + " --expiry-day=" + backupInstance.Spec.ExpireDays + " --expiry-prefix=redis-bak-" + clusterName + ";"
-	shClean := "rm -rf /tmp/redis-bak-*;"
-	container.Args = append(container.Args, shTar+shS3put+shClean)
-	//log.Log.Info("backup file is: " + backupName)
-	//log.Log.Info("rclone command is: " + shTar + shS3put + shS3expire + shClean)
+	sh_py := "/usr/bin/python3 /s3/redis_backup.py " + redisKey + ";"
+	container.Args = append(container.Args, sh_py)
 	container.VolumeMounts = append(container.VolumeMounts, corev1.VolumeMount{Name: "data", MountPath: "/data"})
 
 	if len(backupSchedule) == 0 {
 		job := &batch.Job{}
 		job.Name = backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-job"
+		container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: job.Name})
 		job.Namespace = backupInstance.Namespace
 		job.Spec.ActiveDeadlineSeconds = &activedeadlineseconds
 		job.Spec.BackoffLimit = &backofflimit
@@ -118,6 +138,7 @@ func MakeCronJob(backupSchedule, cronJobVersion, backupPvc, clusterName string, 
 		job.Spec.Template.Spec.RestartPolicy = "Never"
 		job.Spec.Template.Spec.Containers = append(job.Spec.Template.Spec.Containers, container)
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, volumedir)
+
 		//if buildInstance.Spec.NodeSelector != nil {
 		//	job.Spec.Template.Spec.NodeSelector = buildInstance.Spec.NodeSelector
 		//}
@@ -127,6 +148,7 @@ func MakeCronJob(backupSchedule, cronJobVersion, backupPvc, clusterName string, 
 		if cronJobVersion == constants.CronJobVersionV1beta1 {
 			cronJob := &batchv1beta1.CronJob{}
 			cronJob.Name = backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-cronjob"
+			container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: cronJob.Name})
 			cronJob.Namespace = backupInstance.Namespace
 			cronJob.Spec.Schedule = backupInstance.Spec.BackupSchedule
 			cronJob.Spec.JobTemplate.Spec.ActiveDeadlineSeconds = &activedeadlineseconds
@@ -140,6 +162,7 @@ func MakeCronJob(backupSchedule, cronJobVersion, backupPvc, clusterName string, 
 		} else {
 			cronJob := &batch.CronJob{}
 			cronJob.Name = backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-cronjob"
+			container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: cronJob.Name})
 			cronJob.Namespace = backupInstance.Namespace
 			cronJob.Spec.Schedule = backupInstance.Spec.BackupSchedule
 			cronJob.Spec.JobTemplate.Spec.ActiveDeadlineSeconds = &activedeadlineseconds

@@ -50,6 +50,53 @@ spec:
           status:
             description: RedisBackupStatus defines the observed state of RedisBackup
             properties:
+              conditions:
+                description: Conditions represents the backup resource conditions
+                  list.
+                items:
+                  description: BackupCondition defines condition struct for backup
+                    resource
+                  properties:
+                    backupEndTime:
+                      type: string
+                    backupStartTime:
+                      type: string
+                    error:
+                      type: string
+                    fileName:
+                      type: string
+                    fileSize:
+                      type: string
+                    jobName:
+                      type: string
+                    objectName:
+                      type: string
+                    podName:
+                      type: string
+                    s3backupURL:
+                      description: "// type of cluster condition, values in (\\\"Ready\\\")
+                        Type BackupConditionType `json:\"type\"` // Status of the
+                        condition, one of (\\\"True\\\", \\\"False\\\", \\\"Unknown\\\")
+                        Status corev1.ConditionStatus `json:\"status\"` \n // LastTransitionTime
+                        LastTransitionTime metav1.Time `json:\"lastTransitionTime\"`
+                        // Reason Reason string `json:\"reason\"` // Message Message
+                        string `json:\"message\"`"
+                      type: string
+                    status:
+                      type: string
+                  required:
+                  - backupEndTime
+                  - backupStartTime
+                  - error
+                  - fileName
+                  - fileSize
+                  - jobName
+                  - objectName
+                  - podName
+                  - s3backupURL
+                  - status
+                  type: object
+                type: array
               jobStatus:
                 items:
                   properties:

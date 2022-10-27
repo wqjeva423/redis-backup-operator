@@ -20,7 +20,9 @@ import (
 	operatorv1alpha1 "RedisBackupOperator/api/v1alpha1"
 	"RedisBackupOperator/utils"
 	"RedisBackupOperator/utils/constants"
+	rediswqj "RedisBackupOperator/utils/redis"
 	"context"
+	"encoding/json"
 	"fmt"
 	batch "k8s.io/api/batch/v1"
 	batchv1beta1 "k8s.io/api/batch/v1beta1"
@@ -86,20 +88,6 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		msg := fmt.Sprintf("Get Redis pod error!")
 		log.Log.Error(error, msg)
 	} else {
-		//for k, v := range podlist.Items {
-		//	if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "slave" {
-		//		if v.Status.Phase == "Running" {
-		//			backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-		//			msg := fmt.Sprintf("Cluster %s: Backup Slave Pod is %s,Pvc is %s", backupInstance.Spec.ClusterName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
-		//			log.Log.Info(msg)
-		//			break
-		//		} else {
-		//			backupPvc = ""
-		//			msg := fmt.Sprintf("Cluster %s: Slave Pod %s is not running", backupInstance.Spec.ClusterName, v.ObjectMeta.Name)
-		//			log.Log.Info(msg)
-		//		}
-		//	}
-		//}
 		for k, v := range podlist.Items {
 			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
 				if v.Status.Phase == "Running" {
@@ -131,9 +119,12 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Name:      jobName,
 			}
 
+			keyName := backupInstance.Name
+			hostPort := "rfs-" + backupInstance.Spec.ClusterName + ":26379"
+
 			err = r.Client.Get(ctx, backupJobGet, backupJob)
 			if errors.IsNotFound(err) {
-				job := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, "", backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				job := utils.MakeCronJob(keyName, backupInstance.Spec.BackupSchedule, "", backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
 				if err := controllerutil.SetControllerReference(backupInstance, job, r.Scheme); err != nil {
 					msg := fmt.Sprintf("set controllerReference for Job %s/%s failed", req.Namespace, jobName)
 					log.Log.Error(err, msg)
@@ -148,6 +139,35 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					log.Log.Error(err, msg)
 					return ctrl.Result{Requeue: true}, err
 				}
+			} else if err != nil {
+				msg := fmt.Sprintf("failed to get job %s/%s error!", req.Namespace, jobName)
+				log.Log.Error(err, msg)
+				return ctrl.Result{Requeue: true}, err
+			} else {
+				if !backupJob.ObjectMeta.CreationTimestamp.IsZero() {
+					res := rediswqj.RedisConn(keyName, hostPort)
+
+					if len(res) > 0 {
+						var condition []operatorv1alpha1.BackupCondition
+						unmarshalErr := json.Unmarshal([]byte(res), &condition)
+						if unmarshalErr != nil {
+							log.Log.Error(unmarshalErr, "unmarshal json failed")
+						}
+
+						backupInstance.Status.Conditions = condition
+						err := r.Status().Update(context.TODO(), backupInstance)
+
+						if err != nil {
+							fmt.Println(err)
+							return ctrl.Result{}, err
+						}
+					}
+					//if !backupJob.ObjectMeta.CreationTimestamp.IsZero() {
+					//		if len(backupInstance.Status.Conditions) == 0 || (len(backupInstance.Status.Conditions) > 0 && condition[0].ObjectName != backupInstance.Status.Conditions[0].ObjectName) {
+					//			}
+					//	}
+				}
+				return ctrl.Result{}, nil
 			}
 		} else {
 			var backupCronJob client.Object
@@ -167,10 +187,13 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				Name:      cronJobName,
 			}
 
+			keyName := "backupCronjob"
+			hostPort := "rfs-" + backupInstance.Spec.ClusterName + ":26379"
+
 			err = r.Client.Get(ctx, backupCronJobGet, backupCronJob)
 			//var found interface{}
 			if errors.IsNotFound(err) {
-				cronjob := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				cronjob := utils.MakeCronJob(keyName, backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
 				if err := controllerutil.SetControllerReference(backupInstance, cronjob, r.Scheme); err != nil {
 					msg := fmt.Sprintf("set controllerReference for CronJob %s/%s failed", req.Namespace, cronJobName)
 					log.Log.Error(err, msg)
@@ -188,10 +211,9 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			} else if err != nil {
 				msg := fmt.Sprintf("failed to get cronjob %s/%s error!", req.Namespace, cronJobName)
 				log.Log.Error(err, msg)
-
 				return ctrl.Result{Requeue: true}, err
 			} else {
-				cronjob := utils.MakeCronJob(backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
+				cronjob := utils.MakeCronJob(keyName, backupInstance.Spec.BackupSchedule, cronJobVersion, backupPvc, backupInstance.Spec.ClusterName, *backupInstance)
 				if cronJobVersion == constants.CronJobVersionV1beta1 {
 					_, found, err := utils.ExistCronJobV1beta1(cronJobName, req.Namespace, r.Client)
 					if err != nil {
@@ -227,6 +249,28 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 							return ctrl.Result{Requeue: true}, err
 						}
 						return ctrl.Result{}, nil
+					}
+				}
+
+				res := rediswqj.RedisConn(keyName, hostPort)
+				if len(res) > 0 {
+					var condition []operatorv1alpha1.BackupCondition
+					unmarshalErr := json.Unmarshal([]byte(res), &condition)
+					if unmarshalErr != nil {
+						log.Log.Error(unmarshalErr, "unmarshal json failed")
+					}
+
+					if len(backupInstance.Status.Conditions) == 0 ||
+						(len(backupInstance.Status.Conditions) > 0 &&
+							condition[0].FileName != backupInstance.Status.Conditions[len(backupInstance.Status.Conditions)-1].FileName) {
+
+						backupInstance.Status.Conditions = append(backupInstance.Status.Conditions, condition[0])
+						err := r.Status().Update(context.TODO(), backupInstance)
+
+						if err != nil {
+							fmt.Println(err)
+							return ctrl.Result{}, err
+						}
 					}
 				}
 			}
@@ -267,11 +311,13 @@ func (r *RedisBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return ctrl.NewControllerManagedBy(mgr).
 			For(&operatorv1alpha1.RedisBackup{}).
 			Owns(&batchv1beta1.CronJob{}).
+			Owns(&batch.Job{}).
 			Complete(r)
 	} else {
 		return ctrl.NewControllerManagedBy(mgr).
 			For(&operatorv1alpha1.RedisBackup{}).
 			Owns(&batch.CronJob{}).
+			Owns(&batch.Job{}).
 			Complete(r)
 	}
 }

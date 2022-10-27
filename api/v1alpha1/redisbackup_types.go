@@ -39,9 +39,46 @@ type RedisBackupSpec struct {
 	BackupSchedule string `json:"backupSchedule,omitempty"`
 }
 
+// BackupCondition defines condition struct for backup resource
+type BackupCondition struct {
+	//// type of cluster condition, values in (\"Ready\")
+	//Type BackupConditionType `json:"type"`
+	//// Status of the condition, one of (\"True\", \"False\", \"Unknown\")
+	//Status corev1.ConditionStatus `json:"status"`
+	//
+	//// LastTransitionTime
+	//LastTransitionTime metav1.Time `json:"lastTransitionTime"`
+	//// Reason
+	//Reason string `json:"reason"`
+	//// Message
+	//Message string `json:"message"`
+	S3BackupURL     string `json:"s3backupURL"`
+	FileName        string `json:"fileName"`
+	FileSize        string `json:"fileSize"`
+	JobName         string `json:"jobName"`
+	PodName         string `json:"podName"`
+	ObjectName      string `json:"objectName"`
+	BackupStartTime string `json:"backupStartTime"`
+	BackupEndTime   string `json:"backupEndTime"`
+	Status          string `json:"status"`
+	Message         string `json:"message"`
+}
+
+// BackupConditionType defines condition types of a backup resources
+type BackupConditionType string
+
+const (
+	// BackupComplete means the backup has finished his execution
+	BackupComplete BackupConditionType = "Complete"
+	// BackupFailed means backup has failed
+	BackupFailed BackupConditionType = "Failed"
+)
+
 // RedisBackupStatus defines the observed state of RedisBackup
 type RedisBackupStatus struct {
 	JobStatus []JobStatus `json:"jobStatus,omitempty"`
+	// Conditions represents the backup resource conditions list.
+	Conditions []BackupCondition `json:"conditions,omitempty"`
 }
 
 type JobStatus struct {
