@@ -52,8 +52,7 @@ type BackupCondition struct {
 	//Reason string `json:"reason"`
 	//// Message
 	//Message string `json:"message"`
-	S3BackupURL     string `json:"s3backupURL"`
-	FileName        string `json:"fileName"`
+	FilePath        string `json:"filePath"`
 	FileSize        string `json:"fileSize"`
 	JobName         string `json:"jobName"`
 	PodName         string `json:"podName"`

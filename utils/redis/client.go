@@ -5,14 +5,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-func RedisConn(keyName, hostPort string) string {
-	//hostPort = "172.16.59.125:30082"
+func RedisConn(keyName, hostPort, redisPass string) string {
+	//hostPort = "172.16.62.128:30082"
 	log.Log.Info("redis connect")
 	rdb := redis.NewFailoverClient(&redis.FailoverOptions{
 		MasterName:    "mymaster",
 		SentinelAddrs: []string{hostPort},
 		DB:            15,
-		Password:      "root",
+		Password:      redisPass,
 	})
 	res := rdb.Get(keyName)
 	log.Log.Info("redis key " + keyName + ": " + res.Val())

@@ -61,19 +61,7 @@ spec:
                       type: string
                     backupStartTime:
                       type: string
-                    error:
-                      type: string
-                    fileName:
-                      type: string
-                    fileSize:
-                      type: string
-                    jobName:
-                      type: string
-                    objectName:
-                      type: string
-                    podName:
-                      type: string
-                    s3backupURL:
+                    filePath:
                       description: "// type of cluster condition, values in (\\\"Ready\\\")
                         Type BackupConditionType `json:\"type\"` // Status of the
                         condition, one of (\\\"True\\\", \\\"False\\\", \\\"Unknown\\\")
@@ -82,18 +70,27 @@ spec:
                         // Reason Reason string `json:\"reason\"` // Message Message
                         string `json:\"message\"`"
                       type: string
+                    fileSize:
+                      type: string
+                    jobName:
+                      type: string
+                    message:
+                      type: string
+                    objectName:
+                      type: string
+                    podName:
+                      type: string
                     status:
                       type: string
                   required:
                   - backupEndTime
                   - backupStartTime
-                  - error
-                  - fileName
+                  - filePath
                   - fileSize
                   - jobName
+                  - message
                   - objectName
                   - podName
-                  - s3backupURL
                   - status
                   type: object
                 type: array

@@ -20,6 +20,8 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 	backofflimit := int32(1)
 	activedeadlineseconds := int64(1800)
 	ttlsecondsafterfinished := int32(3600)
+	failedJobsHistoryLimit := int32(10)
+	successfulJobsHistoryLimit := int32(20)
 	volumedir := corev1.Volume{
 		Name: "data",
 		VolumeSource: corev1.VolumeSource{
@@ -155,6 +157,9 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 			cronJob.Spec.JobTemplate.Spec.BackoffLimit = &backofflimit
 			cronJob.Spec.JobTemplate.Spec.TTLSecondsAfterFinished = &ttlsecondsafterfinished
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = "Never"
+			cronJob.Spec.ConcurrencyPolicy = "Forbid"
+			cronJob.Spec.FailedJobsHistoryLimit = &failedJobsHistoryLimit
+			cronJob.Spec.SuccessfulJobsHistoryLimit = &successfulJobsHistoryLimit
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers, container)
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes, volumedir)
 
@@ -169,6 +174,9 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 			cronJob.Spec.JobTemplate.Spec.BackoffLimit = &backofflimit
 			cronJob.Spec.JobTemplate.Spec.TTLSecondsAfterFinished = &ttlsecondsafterfinished
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.RestartPolicy = "Never"
+			cronJob.Spec.ConcurrencyPolicy = "Forbid"
+			cronJob.Spec.FailedJobsHistoryLimit = &failedJobsHistoryLimit
+			cronJob.Spec.SuccessfulJobsHistoryLimit = &successfulJobsHistoryLimit
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers, container)
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes, volumedir)
 

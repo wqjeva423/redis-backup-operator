@@ -77,6 +77,15 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 	}
 
+	secret := &corev1.Secret{}
+	secretKey := client.ObjectKey{Name: backupInstance.Spec.ClusterName + "-redis-auth", Namespace: req.Namespace}
+	if err := r.Get(ctx, secretKey, secret); err != nil {
+		msg := fmt.Sprintf("get redisfailover cluster secret %s/%s failed", req.Namespace, backupInstance.Spec.ClusterName+"-redis-auth")
+		log.Log.Error(err, msg)
+		return ctrl.Result{Requeue: true}, err
+	}
+	redisPass := string(secret.Data["password"])
+
 	podlist := corev1.PodList{}
 	backupPvc := ""
 	error := r.Client.List(ctx, &podlist, client.MatchingLabels{
@@ -145,7 +154,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				return ctrl.Result{Requeue: true}, err
 			} else {
 				if !backupJob.ObjectMeta.CreationTimestamp.IsZero() {
-					res := rediswqj.RedisConn(keyName, hostPort)
+					res := rediswqj.RedisConn(keyName, hostPort, redisPass)
 
 					if len(res) > 0 {
 						var condition []operatorv1alpha1.BackupCondition
@@ -252,7 +261,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					}
 				}
 
-				res := rediswqj.RedisConn(keyName, hostPort)
+				res := rediswqj.RedisConn(keyName, hostPort, redisPass)
 				if len(res) > 0 {
 					var condition []operatorv1alpha1.BackupCondition
 					unmarshalErr := json.Unmarshal([]byte(res), &condition)
@@ -262,7 +271,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 					if len(backupInstance.Status.Conditions) == 0 ||
 						(len(backupInstance.Status.Conditions) > 0 &&
-							condition[0].FileName != backupInstance.Status.Conditions[len(backupInstance.Status.Conditions)-1].FileName) {
+							condition[0].FilePath != backupInstance.Status.Conditions[len(backupInstance.Status.Conditions)-1].FilePath) {
 
 						backupInstance.Status.Conditions = append(backupInstance.Status.Conditions, condition[0])
 						err := r.Status().Update(context.TODO(), backupInstance)
