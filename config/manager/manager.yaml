@@ -22,11 +22,11 @@ spec:
         - /manager
 #        args:
 #        - --leader-elect
-        image: redis-backup-operator:v1.4
+        image: 172.16.5.171/redis/redis-backup-operator:v1.4.2
         name: redis-backup-operator
         env:
           - name: backup_image
-            value: 'wqjeva423/s3cmd:v1.4'
+            value: '172.16.5.171/redis/s3cmd:latest'
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:

@@ -1,0 +1,174 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-backup-operator
+  namespace: default
+  labels:
+    control-plane: redis-backup-operator
+spec:
+  selector:
+    matchLabels:
+      control-plane: redis-backup-operator
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        control-plane: redis-backup-operator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+      containers:
+        - command:
+            - /manager
+          image: 172.16.5.171/redis/redis-backup-operator:v1.4.2
+          name: redis-backup-operator
+          env:
+            - name: backup_image
+              value: '172.16.5.171/redis/s3cmd:latest'
+          securityContext:
+            allowPrivilegeEscalation: false
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            limits:
+              cpu: 200m
+              memory: 100Mi
+            requests:
+              cpu: 100m
+              memory: 20Mi
+      serviceAccountName: redis-backup-operator
+      terminationGracePeriodSeconds: 10
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: redis-backup-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: redis-backup-operator
+subjects:
+  - kind: ServiceAccount
+    name: redis-backup-operator
+    namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: redis-backup-operator
+rules:
+  - apiGroups:
+      - batch
+    resources:
+      - cronjobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - batch
+    resources:
+      - jobs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumes
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - pods
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - operator.bobfintech.com
+    resources:
+      - redisbackups
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - operator.bobfintech.com
+    resources:
+      - redisbackups/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - operator.bobfintech.com
+    resources:
+      - redisbackups/status
+    verbs:
+      - get
+      - patch
+      - update
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: redis-backup-operator
+  namespace: default
