@@ -130,7 +130,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			keyName := backupInstance.Name
-			hostPort := "rfs-" + backupInstance.Spec.ClusterName + ":26379"
+			hostPort := "rfs-" + backupInstance.Spec.ClusterName + "." + backupInstance.Namespace + ".svc.cluster.local:26379"
 
 			err = r.Client.Get(ctx, backupJobGet, backupJob)
 			if errors.IsNotFound(err) {
