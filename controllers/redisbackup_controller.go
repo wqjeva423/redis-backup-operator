@@ -119,6 +119,8 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, nil
 		}
 
+		hostPort := "rfs-" + backupInstance.Spec.ClusterName + "." + backupInstance.Namespace + ".svc.cluster.local:26379"
+
 		// 判断是否周期执行
 		if len(backupInstance.Spec.BackupSchedule) == 0 {
 			// 如果BackupSchedule为空，则创建单次备份JOB
@@ -130,7 +132,6 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			keyName := backupInstance.Name
-			hostPort := "rfs-" + backupInstance.Spec.ClusterName + "." + backupInstance.Namespace + ".svc.cluster.local:26379"
 
 			err = r.Client.Get(ctx, backupJobGet, backupJob)
 			if errors.IsNotFound(err) {
@@ -198,7 +199,6 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			}
 
 			keyName := "backupCronjob"
-			hostPort := "rfs-" + backupInstance.Spec.ClusterName + ":26379"
 
 			err = r.Client.Get(ctx, backupCronJobGet, backupCronJob)
 			//var found interface{}
