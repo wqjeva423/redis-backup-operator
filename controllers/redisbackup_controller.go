@@ -126,7 +126,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if len(backupInstance.Spec.BackupSchedule) == 0 {
 			// 如果BackupSchedule为空，则创建单次备份JOB
 			backupJob := &batch.Job{}
-			jobName := backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-job"
+			jobName := backupInstance.Name
 			backupJobGet := types.NamespacedName{
 				Namespace: req.Namespace,
 				Name:      jobName,
@@ -193,7 +193,7 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				backupCronJob = &batch.CronJob{}
 			}
 
-			cronJobName := backupInstance.Name + "-" + backupInstance.Spec.ClusterName + "-cronjob"
+			cronJobName := backupInstance.Name
 			backupCronJobGet := types.NamespacedName{
 				Namespace: req.Namespace,
 				Name:      cronJobName,
