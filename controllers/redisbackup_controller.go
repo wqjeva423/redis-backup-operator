@@ -35,6 +35,7 @@ import (
 	"reflect"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -322,12 +323,14 @@ func (r *RedisBackupReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			For(&operatorv1alpha1.RedisBackup{}).
 			Owns(&batchv1beta1.CronJob{}).
 			Owns(&batch.Job{}).
+			WithOptions(controller.Options{MaxConcurrentReconciles: 20}).
 			Complete(r)
 	} else {
 		return ctrl.NewControllerManagedBy(mgr).
 			For(&operatorv1alpha1.RedisBackup{}).
 			Owns(&batch.CronJob{}).
 			Owns(&batch.Job{}).
+			WithOptions(controller.Options{MaxConcurrentReconciles: 20}).
 			Complete(r)
 	}
 }
