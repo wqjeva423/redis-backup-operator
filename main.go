@@ -17,8 +17,14 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
+	"log"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -96,9 +102,54 @@ func main() {
 		os.Exit(1)
 	}
 
+	redisBackUpReconciler := controllers.NewRedisBackupReconciler(mgr.GetClient(), mgr.GetScheme())
+
+	restConfig, err := rest.InClusterConfig()
+	if err != nil {
+		log.Fatalf("unable to get rest config: %v", err)
+	}
+
+	rClient, err := operatorv1alpha1.NewClient(restConfig)
+	if err != nil {
+		log.Fatalf("unable to create k8s client: %v", err)
+	}
+
+	cycleCh := cycleRedisBackup(rClient, redisBackUpReconciler)
+	defer close(cycleCh)
+
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "problem running manager")
 		os.Exit(1)
 	}
+}
+
+func cycleRedisBackup(rClient *rest.RESTClient, RedisBackUpReconciler *controllers.RedisBackupReconciler) chan struct{} {
+	options := func(options *metav1.ListOptions) {
+	}
+	watchlist := cache.NewFilteredListWatchFromClient(
+		rClient,
+		"redisbackups",
+		"",
+		options,
+	)
+
+	_, controller := cache.NewInformer(
+		watchlist,
+		&operatorv1alpha1.RedisBackup{},
+		300*time.Second,
+		cache.ResourceEventHandlerFuncs{
+			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+				if newCluster, ok := newObj.(*operatorv1alpha1.RedisBackup); ok {
+					err := RedisBackUpReconciler.CycleSync(context.Background(), newCluster.GetNamespace(), newCluster.GetName())
+					if err != nil {
+						log.Fatalf("[%s/%s] CycleSync err %v", newCluster.GetNamespace(), newCluster.GetName(), err)
+					}
+				}
+			},
+		},
+	)
+	stop := make(chan struct{})
+	go controller.Run(stop)
+	return stop
 }

@@ -29,6 +29,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
@@ -45,6 +46,16 @@ import (
 type RedisBackupReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+}
+
+// NewRedisClusterBackUpReconciler builds and return new NewRedisClusterBackUpReconciler instance
+func NewRedisBackupReconciler(client client.Client, Scheme *runtime.Scheme) *RedisBackupReconciler {
+	RedisClusterBackUpReconciler := &RedisBackupReconciler{
+		client,
+		Scheme,
+	}
+
+	return RedisClusterBackUpReconciler
 }
 
 //+kubebuilder:rbac:groups=operator.bobfintech.com,resources=redisbackups,verbs=get;list;watch;create;update;patch;delete
@@ -121,6 +132,13 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 
 		hostPort := "rfs-" + backupInstance.Spec.ClusterName + "." + backupInstance.Namespace + ".svc.cluster.local:26379"
+
+		//获得本次备份的所有信息并记录为BackupInfo
+		BackupInfo := operatorv1alpha1.LastBackupInfo{
+			BackupSecretName: backupInstance.Spec.BackupSecretName,
+			BackupURL:        backupInstance.Spec.BackupURL,
+			BackupSchedule:   backupInstance.Spec.BackupSchedule,
+		}
 
 		// 判断是否周期执行
 		if len(backupInstance.Spec.BackupSchedule) == 0 {
@@ -244,14 +262,13 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 						return ctrl.Result{}, nil
 					}
 				} else {
-					_, found, err := utils.ExistCronJob(cronJobName, req.Namespace, r.Client)
-					if err != nil {
-						msg := fmt.Sprintf("found cronjob %s/%s error!", req.Namespace, cronJobName)
-						log.Log.Error(err, msg)
-						return ctrl.Result{Requeue: true}, err
+					oldBackupInfo := operatorv1alpha1.LastBackupInfo{
+						BackupSecretName: backupInstance.Status.LastBackupInfo.BackupSecretName,
+						BackupURL:        backupInstance.Status.LastBackupInfo.BackupURL,
+						BackupSchedule:   backupInstance.Status.LastBackupInfo.BackupSchedule,
 					}
-					backupPvcOld := found.Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					if !reflect.DeepEqual(backupPvc, backupPvcOld) {
+					//对比上次备份时backupInfo和本次备份的backupInfo是否一致，不一致则重建cronjob
+					if !reflect.DeepEqual(BackupInfo, oldBackupInfo) {
 						msg := fmt.Sprintf("rebuild cronjob %s/%s", req.Namespace, cronJobName)
 						log.Log.Info(msg)
 						if err := r.Client.Delete(context.TODO(), cronjob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
@@ -261,6 +278,24 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 						}
 						return ctrl.Result{}, nil
 					}
+
+					//_, found, err := utils.ExistCronJob(cronJobName, req.Namespace, r.Client)
+					//if err != nil {
+					//	msg := fmt.Sprintf("found cronjob %s/%s error!", req.Namespace, cronJobName)
+					//	log.Log.Error(err, msg)
+					//	return ctrl.Result{Requeue: true}, err
+					//}
+					//backupPvcOld := found.Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					//if !reflect.DeepEqual(backupPvc, backupPvcOld) {
+					//	msg := fmt.Sprintf("rebuild cronjob %s/%s", req.Namespace, cronJobName)
+					//	log.Log.Info(msg)
+					//	if err := r.Client.Delete(context.TODO(), cronjob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+					//		msg := fmt.Sprintf("rebuild cronjob %s/%s error", req.Namespace, cronJobName)
+					//		log.Log.Error(err, msg)
+					//		return ctrl.Result{Requeue: true}, err
+					//	}
+					//	return ctrl.Result{}, nil
+					//}
 				}
 
 				res := rediswqj.RedisConn(keyName, hostPort, redisPass)
@@ -285,9 +320,109 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					}
 				}
 			}
+			//周期备份记录本次备份的BackupInfo信息
+			backupInstance.Status.LastBackupInfo = BackupInfo
+			err := r.Status().Update(context.TODO(), backupInstance)
+			if err != nil {
+				msg := fmt.Sprintf("update Status.LastBackupInfo %s/%s error", req.Namespace, cronJobName)
+				log.Log.Error(err, msg)
+				return ctrl.Result{}, err
+			}
 		}
 	}
 	return ctrl.Result{}, nil
+}
+
+func (r *RedisBackupReconciler) CycleSync(ctx context.Context, namespace, name string) error {
+	namespacedName := types.NamespacedName{
+		Name:      name,
+		Namespace: namespace,
+	}
+
+	backupInstance := &operatorv1alpha1.RedisBackup{}
+	err := r.Client.Get(ctx, namespacedName, backupInstance)
+	if err != nil {
+		if errors.IsNotFound(err) {
+			msg := fmt.Sprintf("CycleSync backup CR [%s] not found. Might be deleted.", namespacedName)
+			log.Log.Info(msg)
+			return nil
+		}
+		msg := fmt.Sprintf("CycleSync unable to get backup CR %s: %v", namespacedName, err)
+		log.Log.Info(msg)
+		return nil
+	}
+
+	backupPvc := ""
+	podlist := corev1.PodList{}
+	error := r.Client.List(ctx, &podlist, client.MatchingLabels{
+		"app.kubernetes.io/component":  "redis",
+		"app.kubernetes.io/managed-by": "redis-operator",
+		"app.kubernetes.io/name":       backupInstance.Spec.ClusterName,
+		"app.kubernetes.io/part-of":    "redis-failover"})
+	if error != nil {
+		msg := fmt.Sprintf("Get Redis pod error!")
+		log.Log.Error(error, msg)
+	} else {
+		if len(podlist.Items) == 0 {
+			msg := fmt.Sprintf("CycleSync [%s] redis pods not found. Redis-Sentinel-Cluster might be deleted.", namespacedName)
+			log.Log.Info(msg)
+			return nil
+		}
+		for k, v := range podlist.Items {
+			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
+				if v.Status.Phase == "Running" {
+					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+					msg := fmt.Sprintf("CycleSync Cluster %s %s: Backup on Master Pod %s,Pvc is %s", backupInstance.Spec.ClusterName, namespacedName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					log.Log.Info(msg)
+					break
+				} else {
+					msg := fmt.Sprintf("CycleSync Cluster %s %s: No Running Pod to Backup!", backupInstance.Spec.ClusterName, namespacedName)
+					log.Log.Info(msg)
+					return nil
+				}
+			}
+		}
+
+		if backupPvc == "" {
+			msg := fmt.Sprintf("CycleSync Cluster %s %s: No master found!", backupInstance.Spec.ClusterName, namespacedName)
+			log.Log.Info(msg)
+			return nil
+		}
+	}
+
+	lableMap := map[string]string{
+		constants.SentinelNameLabel: backupInstance.Spec.ClusterName,
+	}
+	option := client.ListOptions{
+		LabelSelector: labels.SelectorFromSet(lableMap),
+		Namespace:     namespacedName.Namespace,
+	}
+
+	targetCronJob := &batch.CronJobList{}
+	err = r.Client.List(context.TODO(), targetCronJob, &option)
+	if err != nil {
+		msg := fmt.Sprintf("CycleSync [%s] found cronjob list error!", namespacedName)
+		log.Log.Error(err, msg)
+		return err
+	}
+	if len(targetCronJob.Items) == 0 {
+		msg := fmt.Sprintf("CycleSync [%s] backup cronjob not found. Might be deleted.", namespacedName)
+		log.Log.Info(msg)
+		return nil
+	} else {
+		backupPvcOld := targetCronJob.Items[0].Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
+		if !reflect.DeepEqual(backupPvc, backupPvcOld) {
+			msg := fmt.Sprintf("CycleSync [%s] rebuild cronjob.", namespacedName)
+			log.Log.Info(msg)
+			if err := r.Client.Delete(context.TODO(), &targetCronJob.Items[0], client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
+				msg := fmt.Sprintf("CycleSync [%s] rebuild cronjob error", namespacedName)
+				log.Log.Error(err, msg)
+				return err
+			}
+			return nil
+		}
+	}
+	return nil
 }
 
 func getCronJobVersion() string {

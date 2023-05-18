@@ -132,6 +132,7 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 	if len(backupSchedule) == 0 {
 		job := &batch.Job{}
 		job.Name = backupInstance.Name
+		job.Labels = map[string]string{constants.SentinelNameLabel: backupInstance.Spec.ClusterName}
 		container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: job.Name})
 		job.Namespace = backupInstance.Namespace
 		job.Spec.ActiveDeadlineSeconds = &activedeadlineseconds
@@ -150,6 +151,7 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 		if cronJobVersion == constants.CronJobVersionV1beta1 {
 			cronJob := &batchv1beta1.CronJob{}
 			cronJob.Name = backupInstance.Name
+			cronJob.Labels = map[string]string{constants.SentinelNameLabel: backupInstance.Spec.ClusterName}
 			container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: cronJob.Name})
 			cronJob.Namespace = backupInstance.Namespace
 			cronJob.Spec.Schedule = backupInstance.Spec.BackupSchedule
@@ -167,6 +169,7 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 		} else {
 			cronJob := &batch.CronJob{}
 			cronJob.Name = backupInstance.Name
+			cronJob.Labels = map[string]string{constants.SentinelNameLabel: backupInstance.Spec.ClusterName}
 			container.Env = append(container.Env, corev1.EnvVar{Name: "jobName", Value: cronJob.Name})
 			cronJob.Namespace = backupInstance.Namespace
 			cronJob.Spec.Schedule = backupInstance.Spec.BackupSchedule

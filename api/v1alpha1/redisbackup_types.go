@@ -75,9 +75,16 @@ const (
 
 // RedisBackupStatus defines the observed state of RedisBackup
 type RedisBackupStatus struct {
-	JobStatus []JobStatus `json:"jobStatus,omitempty"`
+	JobStatus      []JobStatus    `json:"jobStatus,omitempty"`
+	LastBackupInfo LastBackupInfo `json:"lastBackupInfo,omitempty"`
 	// Conditions represents the backup resource conditions list.
 	Conditions []BackupCondition `json:"conditions,omitempty"`
+}
+
+type LastBackupInfo struct {
+	BackupSecretName string `json:"backupSecretName,omitempty"`
+	BackupURL        string `json:"backupURL,omitempty"`
+	BackupSchedule   string `json:"backupSchedule,omitempty"`
 }
 
 type JobStatus struct {

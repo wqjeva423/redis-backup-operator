@@ -20,7 +20,11 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/rest"
 	"sigs.k8s.io/controller-runtime/pkg/scheme"
 )
 
@@ -34,3 +38,19 @@ var (
 	// AddToScheme adds the types in this group-version to the given scheme.
 	AddToScheme = SchemeBuilder.AddToScheme
 )
+
+func NewClient(cfg *rest.Config) (*rest.RESTClient, error) {
+	scheme := runtime.NewScheme()
+	utilruntime.Must(SchemeBuilder.AddToScheme(scheme))
+	config := *cfg
+	config.GroupVersion = &GroupVersion
+	config.APIPath = "/apis"
+	config.ContentType = runtime.ContentTypeJSON
+	config.UserAgent = rest.DefaultKubernetesUserAgent()
+	config.NegotiatedSerializer = serializer.NewCodecFactory(scheme).WithoutConversion()
+	client, err := rest.RESTClientFor(&config)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
