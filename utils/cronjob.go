@@ -13,7 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup) client.Object {
+func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterName string, backupInstance operatorv1alpha1.RedisBackup, podlist corev1.PodList) client.Object {
 
 	//backupName := "redis-bak-" + clusterName + "-$bak_time.tar.gz"
 	backupImg := GetEnvDefault("backup_image", "172.16.5.171/redis/s3cmd:latest")
@@ -141,11 +141,16 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 		job.Spec.Template.Spec.RestartPolicy = "Never"
 		job.Spec.Template.Spec.Containers = append(job.Spec.Template.Spec.Containers, container)
 		job.Spec.Template.Spec.Volumes = append(job.Spec.Template.Spec.Volumes, volumedir)
+		if podlist.Items[0].Spec.NodeSelector != nil {
+			job.Spec.Template.Spec.NodeSelector = podlist.Items[0].Spec.NodeSelector
+		}
+		if podlist.Items[0].Spec.Tolerations != nil {
+			job.Spec.Template.Spec.Tolerations = podlist.Items[0].Spec.Tolerations
+		}
 
 		//if buildInstance.Spec.NodeSelector != nil {
 		//	job.Spec.Template.Spec.NodeSelector = buildInstance.Spec.NodeSelector
 		//}
-
 		return job
 	} else {
 		if cronJobVersion == constants.CronJobVersionV1beta1 {
@@ -164,6 +169,12 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 			cronJob.Spec.SuccessfulJobsHistoryLimit = &successfulJobsHistoryLimit
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers, container)
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes, volumedir)
+			if podlist.Items[0].Spec.NodeSelector != nil {
+				cronJob.Spec.JobTemplate.Spec.Template.Spec.NodeSelector = podlist.Items[0].Spec.NodeSelector
+			}
+			if podlist.Items[0].Spec.Tolerations != nil {
+				cronJob.Spec.JobTemplate.Spec.Template.Spec.Tolerations = podlist.Items[0].Spec.Tolerations
+			}
 
 			return cronJob
 		} else {
@@ -182,6 +193,12 @@ func MakeCronJob(redisKey, backupSchedule, cronJobVersion, backupPvc, clusterNam
 			cronJob.Spec.SuccessfulJobsHistoryLimit = &successfulJobsHistoryLimit
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Containers, container)
 			cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cronJob.Spec.JobTemplate.Spec.Template.Spec.Volumes, volumedir)
+			if podlist.Items[0].Spec.NodeSelector != nil {
+				cronJob.Spec.JobTemplate.Spec.Template.Spec.NodeSelector = podlist.Items[0].Spec.NodeSelector
+			}
+			if podlist.Items[0].Spec.Tolerations != nil {
+				cronJob.Spec.JobTemplate.Spec.Template.Spec.Tolerations = podlist.Items[0].Spec.Tolerations
+			}
 
 			return cronJob
 		}
