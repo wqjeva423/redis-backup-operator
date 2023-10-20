@@ -19,12 +19,13 @@ package main
 import (
 	"context"
 	"flag"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/cache"
 	"log"
 	"os"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -91,6 +92,13 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "RedisBackup")
 		os.Exit(1)
 	}
+	if err = (&controllers.RedisCloneReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "RedisClone")
+		os.Exit(1)
+	}
 	//+kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -103,6 +111,7 @@ func main() {
 	}
 
 	redisBackUpReconciler := controllers.NewRedisBackupReconciler(mgr.GetClient(), mgr.GetScheme())
+	redisCloneReconciler := controllers.NewRedisCloneReconciler(mgr.GetClient(), mgr.GetScheme())
 
 	restConfig, err := rest.InClusterConfig()
 	if err != nil {
@@ -116,6 +125,8 @@ func main() {
 
 	cycleCh := cycleRedisBackup(rClient, redisBackUpReconciler)
 	defer close(cycleCh)
+	cloneCycleCh := cycleRedisClone(rClient, redisCloneReconciler)
+	defer close(cloneCycleCh)
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
@@ -144,6 +155,36 @@ func cycleRedisBackup(rClient *rest.RESTClient, RedisBackUpReconciler *controlle
 					err := RedisBackUpReconciler.CycleSync(context.Background(), newCluster.GetNamespace(), newCluster.GetName())
 					if err != nil {
 						log.Fatalf("[%s/%s] CycleSync err %v", newCluster.GetNamespace(), newCluster.GetName(), err)
+					}
+				}
+			},
+		},
+	)
+	stop := make(chan struct{})
+	go controller.Run(stop)
+	return stop
+}
+
+func cycleRedisClone(rClient *rest.RESTClient, RedisCloneReconciler *controllers.RedisCloneReconciler) chan struct{} {
+	options := func(options *metav1.ListOptions) {
+	}
+	watchlist := cache.NewFilteredListWatchFromClient(
+		rClient,
+		"redisclones",
+		"",
+		options,
+	)
+
+	_, controller := cache.NewInformer(
+		watchlist,
+		&operatorv1alpha1.RedisClone{},
+		5*time.Second,
+		cache.ResourceEventHandlerFuncs{
+			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
+				if newCluster, ok := newObj.(*operatorv1alpha1.RedisClone); ok {
+					err := RedisCloneReconciler.CloneInfoSync(context.Background(), newCluster.GetNamespace(), newCluster.GetName())
+					if err != nil {
+						log.Fatalf("[%s/%s] RedisCloneCycleSync err %v", newCluster.GetNamespace(), newCluster.GetName(), err)
 					}
 				}
 			},

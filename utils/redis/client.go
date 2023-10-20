@@ -2,6 +2,7 @@ package rediswqj
 
 import (
 	"github.com/go-redis/redis"
+	"net"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -22,4 +23,19 @@ func RedisConn(keyName, hostPort, redisPass string) string {
 		return ""
 	}
 	return res.Val()
+}
+
+func SlaveIsReady(ip, port, password string) (string, error) {
+	options := &redis.Options{
+		Addr:     net.JoinHostPort(ip, port),
+		Password: password,
+		DB:       0,
+	}
+	rClient := redis.NewClient(options)
+	defer rClient.Close()
+	info, err := rClient.Info("replication").Result()
+	if err != nil {
+		return info, err
+	}
+	return info, nil
 }

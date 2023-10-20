@@ -1,0 +1,14 @@
+apiVersion: operator.bobfintech.com/v1alpha1
+kind: RedisClone
+metadata:
+  name: redisclone-wqj
+  namespace: default
+spec:
+  # Add fields here
+  sourceCluster: megaman
+  destCluster: zero
+  sourceIP: 127.0.0.1
+  sourcePort: "32111"
+  sourcePasswd: cm9vdA==
+  clusterType: Sentinel
+  replicas: 2

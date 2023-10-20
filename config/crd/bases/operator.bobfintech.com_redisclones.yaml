@@ -1,0 +1,100 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.7.0
+  creationTimestamp: null
+  name: redisclones.operator.bobfintech.com
+spec:
+  group: operator.bobfintech.com
+  names:
+    kind: RedisClone
+    listKind: RedisCloneList
+    plural: redisclones
+    singular: redisclone
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RedisClone is the Schema for the redisclones API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RedisCloneSpec defines the desired state of RedisClone
+            properties:
+              clusterType:
+                type: string
+              destCluster:
+                type: string
+              replicas:
+                format: int32
+                type: integer
+              sourceCluster:
+                type: string
+              sourceIP:
+                type: string
+              sourcePasswd:
+                type: string
+              sourcePort:
+                type: string
+            type: object
+          status:
+            description: RedisCloneStatus defines the observed state of RedisClone
+            properties:
+              conditions:
+                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
+                  of cluster Important: Run "make" to regenerate code after modifying
+                  this file'
+                properties:
+                  cloneLag:
+                    type: string
+                  cloneStatus:
+                    type: string
+                  clusterType:
+                    type: string
+                  destCluster:
+                    type: string
+                  offSet:
+                    type: string
+                  replicas:
+                    format: int32
+                    type: integer
+                  sourceCluster:
+                    type: string
+                  sourceIPPort:
+                    type: string
+                  startTime:
+                    type: string
+                required:
+                - cloneLag
+                - cloneStatus
+                - offSet
+                - replicas
+                - startTime
+                type: object
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []
