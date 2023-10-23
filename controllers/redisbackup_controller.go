@@ -278,24 +278,6 @@ func (r *RedisBackupReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 						}
 						return ctrl.Result{}, nil
 					}
-
-					//_, found, err := utils.ExistCronJob(cronJobName, req.Namespace, r.Client)
-					//if err != nil {
-					//	msg := fmt.Sprintf("found cronjob %s/%s error!", req.Namespace, cronJobName)
-					//	log.Log.Error(err, msg)
-					//	return ctrl.Result{Requeue: true}, err
-					//}
-					//backupPvcOld := found.Spec.JobTemplate.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					//if !reflect.DeepEqual(backupPvc, backupPvcOld) {
-					//	msg := fmt.Sprintf("rebuild cronjob %s/%s", req.Namespace, cronJobName)
-					//	log.Log.Info(msg)
-					//	if err := r.Client.Delete(context.TODO(), cronjob, client.PropagationPolicy(metav1.DeletePropagationBackground)); err != nil {
-					//		msg := fmt.Sprintf("rebuild cronjob %s/%s error", req.Namespace, cronJobName)
-					//		log.Log.Error(err, msg)
-					//		return ctrl.Result{Requeue: true}, err
-					//	}
-					//	return ctrl.Result{}, nil
-					//}
 				}
 
 				res := rediswqj.RedisConn(keyName, hostPort, redisPass)
@@ -372,8 +354,8 @@ func (r *RedisBackupReconciler) CycleSync(ctx context.Context, namespace, name s
 			if podlist.Items[k].ObjectMeta.Labels["redisfailovers-role"] == "master" {
 				if v.Status.Phase == "Running" {
 					backupPvc = v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName
-					msg := fmt.Sprintf("CycleSync Cluster %s %s: Backup on Master Pod %s,Pvc is %s", backupInstance.Spec.ClusterName, namespacedName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
-					log.Log.Info(msg)
+					//msg := fmt.Sprintf("CycleSync Cluster %s %s: Backup on Master Pod %s,Pvc is %s", backupInstance.Spec.ClusterName, namespacedName, v.ObjectMeta.Name, v.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+					//log.Log.Info(msg)
 					break
 				} else {
 					msg := fmt.Sprintf("CycleSync Cluster %s %s: No Running Pod to Backup!", backupInstance.Spec.ClusterName, namespacedName)

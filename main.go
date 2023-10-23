@@ -148,7 +148,7 @@ func cycleRedisBackup(rClient *rest.RESTClient, RedisBackUpReconciler *controlle
 	_, controller := cache.NewInformer(
 		watchlist,
 		&operatorv1alpha1.RedisBackup{},
-		300*time.Second,
+		1800*time.Second,
 		cache.ResourceEventHandlerFuncs{
 			UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 				if newCluster, ok := newObj.(*operatorv1alpha1.RedisBackup); ok {

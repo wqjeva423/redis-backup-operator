@@ -93,13 +93,12 @@ func (r *RedisCloneReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		StartTime:     getCurrentTime(),
 		OffSet:        "",
 		CloneLag:      "",
-		CloneStatus:   "error",
+		CloneStatus:   "down",
 		Replicas:      cloneInstance.Spec.Replicas,
 	}
 
 	replicationInfo := make(map[string]string)
 	//获取目标集群DestCluster节点Ip
-	DestPodIP := ""
 	podlist := corev1.PodList{}
 	error := r.Client.List(ctx, &podlist, client.MatchingLabels{
 		"app.kubernetes.io/component":  "redis",
@@ -117,33 +116,24 @@ func (r *RedisCloneReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		log.Log.Info(msg)
 		return ctrl.Result{}, nil
 	} else {
-		DestPodIP = podlist.Items[0].Status.PodIP
+		DestPodIP := podlist.Items[0].Status.PodIP
 		//解析源端SourceCluster密码
 		redisPass, _ := base64.StdEncoding.DecodeString(cloneInstance.Spec.SourcePasswd)
 		//获取复制信息
-		cloneInfo := ""
-		infoReplication, _ := redis.SlaveIsReady(cloneInstance.Spec.SourceIP, cloneInstance.Spec.SourcePort, string(redisPass))
+		infoReplication, _ := redis.SlaveIsReady(DestPodIP, "6379", string(redisPass))
 
-		//过滤目标端DestPod的复制信息
-		lines := strings.Split(infoReplication, "\n")
-		for _, line := range lines {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 && strings.Contains(line, DestPodIP) {
-				cloneInfo = parts[1]
-			}
-		}
-
-		if cloneInfo != "" {
-			cloneInfoLines := strings.Split(cloneInfo, ",")
-			for _, cloneInfoLine := range cloneInfoLines {
-				cloneInfoParts := strings.Split(cloneInfoLine, "=")
-				if len(cloneInfoParts) == 2 {
-					replicationInfo[cloneInfoParts[0]] = cloneInfoParts[1]
+		if infoReplication != "" {
+			//过滤目标端DestPod的复制信息
+			lines := strings.Split(infoReplication, "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, ":")
+				if len(parts) == 2 {
+					replicationInfo[parts[0]] = parts[1]
 				}
 			}
-			cloneConditions.OffSet = replicationInfo["offset"]
-			cloneConditions.CloneLag = replicationInfo["lag"]
-			cloneConditions.CloneStatus = replicationInfo["state"]
+			cloneConditions.OffSet = replicationInfo["slave_repl_offset"]
+			cloneConditions.CloneLag = replicationInfo["master_last_io_seconds_ago"]
+			cloneConditions.CloneStatus = replicationInfo["master_link_status"]
 		}
 
 		//更新clone CR的Conditions
@@ -180,7 +170,6 @@ func (r *RedisCloneReconciler) CloneInfoSync(ctx context.Context, namespace, nam
 	cloneConditions := cloneInstance.Status.Conditions
 	replicationInfo := make(map[string]string)
 	//获取目标集群DestCluster节点Ip
-	DestPodIP := ""
 	podlist := corev1.PodList{}
 	error := r.Client.List(ctx, &podlist, client.MatchingLabels{
 		"app.kubernetes.io/component":  "redis",
@@ -194,53 +183,45 @@ func (r *RedisCloneReconciler) CloneInfoSync(ctx context.Context, namespace, nam
 	}
 
 	if len(podlist.Items) == 0 {
+		cloneConditions.OffSet = ""
+		cloneConditions.CloneLag = "-1"
+		cloneConditions.CloneStatus = "down"
 		msg := fmt.Sprintf("CloneInfoSync can't find Dest Redis pods! %s:%s", namespacedName, cloneInstance.Spec.DestCluster)
 		log.Log.Info(msg)
-		return nil
 	} else {
-		DestPodIP = podlist.Items[0].Status.PodIP
+		DestPodIP := podlist.Items[0].Status.PodIP
 		//解析源端SourceCluster密码
 		redisPass, _ := base64.StdEncoding.DecodeString(cloneInstance.Spec.SourcePasswd)
 		//获取复制信息
-		cloneInfo := ""
-		infoReplication, _ := redis.SlaveIsReady(cloneInstance.Spec.SourceIP, cloneInstance.Spec.SourcePort, string(redisPass))
+		infoReplication, _ := redis.SlaveIsReady(DestPodIP, "6379", string(redisPass))
 
-		//过滤目标端DestPod的复制信息
-		lines := strings.Split(infoReplication, "\n")
-		for _, line := range lines {
-			parts := strings.Split(line, ":")
-			if len(parts) == 2 && strings.Contains(line, DestPodIP) {
-				cloneInfo = parts[1]
-			}
-		}
-
-		if cloneInfo != "" {
-			cloneInfoLines := strings.Split(cloneInfo, ",")
-			for _, cloneInfoLine := range cloneInfoLines {
-				cloneInfoParts := strings.Split(cloneInfoLine, "=")
-				if len(cloneInfoParts) == 2 {
-					replicationInfo[cloneInfoParts[0]] = cloneInfoParts[1]
+		if infoReplication != "" {
+			//过滤目标端DestPod的复制信息
+			lines := strings.Split(infoReplication, "\n")
+			for _, line := range lines {
+				parts := strings.Split(line, ":")
+				if len(parts) == 2 {
+					replicationInfo[parts[0]] = parts[1]
 				}
 			}
-			cloneConditions.OffSet = replicationInfo["offset"]
-			cloneConditions.CloneLag = replicationInfo["lag"]
-			cloneConditions.CloneStatus = replicationInfo["state"]
+			cloneConditions.OffSet = replicationInfo["slave_repl_offset"]
+			cloneConditions.CloneLag = replicationInfo["master_last_io_seconds_ago"]
+			cloneConditions.CloneStatus = replicationInfo["master_link_status"]
 		} else {
 			cloneConditions.OffSet = ""
-			cloneConditions.CloneLag = ""
-			cloneConditions.CloneStatus = "error"
+			cloneConditions.CloneLag = "-1"
+			cloneConditions.CloneStatus = "down"
 		}
-
-		//更新clone CR的Conditions
-		cloneInstance.Status.Conditions = cloneConditions
-		err = r.Status().Update(context.TODO(), cloneInstance)
-		if err != nil {
-			if strings.Contains(err.Error(), "the object has been modified") {
-				return nil
-			} else {
-				msg := fmt.Sprintf("CloneInfoSync update CR conditions %s: %v", namespacedName, err)
-				log.Log.Info(msg)
-			}
+	}
+	//更新clone CR的Conditions
+	cloneInstance.Status.Conditions = cloneConditions
+	err = r.Status().Update(context.TODO(), cloneInstance)
+	if err != nil {
+		if strings.Contains(err.Error(), "the object has been modified") {
+			return nil
+		} else {
+			msg := fmt.Sprintf("CloneInfoSync update CR conditions %s: %v", namespacedName, err)
+			log.Log.Info(msg)
 		}
 	}
 	return nil
