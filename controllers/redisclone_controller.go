@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"strings"
 	"time"
 
@@ -80,9 +81,11 @@ func (r *RedisCloneReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if errors.IsNotFound(err) {
 			msg := fmt.Sprintf("RedisClone clone CR [%s] not found. Might be deleted.", req.NamespacedName)
 			log.Log.Info(msg)
+			return reconcile.Result{}, nil
 		}
 		msg := fmt.Sprintf("RedisClone unable to get clone CR %s: %v", req.NamespacedName, err)
 		log.Log.Info(msg)
+		return reconcile.Result{}, nil
 	}
 
 	cloneConditions := operatorv1alpha1.CloneCondition{
@@ -114,7 +117,6 @@ func (r *RedisCloneReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	if len(podlist.Items) == 0 {
 		msg := fmt.Sprintf("RedisClone can't find Dest Redis pods! %s:%s", req.NamespacedName, cloneInstance.Spec.DestCluster)
 		log.Log.Info(msg)
-		return ctrl.Result{}, nil
 	} else {
 		DestPodIP := podlist.Items[0].Status.PodIP
 		//解析源端SourceCluster密码
@@ -135,15 +137,14 @@ func (r *RedisCloneReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			cloneConditions.CloneLag = replicationInfo["master_last_io_seconds_ago"]
 			cloneConditions.CloneStatus = replicationInfo["master_link_status"]
 		}
-
-		//更新clone CR的Conditions
-		cloneInstance.Status.Conditions = cloneConditions
-		err = r.Status().Update(context.TODO(), cloneInstance)
-		if err != nil {
-			msg := fmt.Sprintf("RedisClone update CR conditions %s: %v", req.NamespacedName, err)
-			log.Log.Info(msg)
-			return ctrl.Result{}, err
-		}
+	}
+	//更新clone CR的Conditions
+	cloneInstance.Status.Conditions = cloneConditions
+	err = r.Status().Update(context.TODO(), cloneInstance)
+	if err != nil {
+		msg := fmt.Sprintf("RedisClone update CR conditions %s: %v", req.NamespacedName, err)
+		log.Log.Info(msg)
+		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
 }
@@ -168,6 +169,14 @@ func (r *RedisCloneReconciler) CloneInfoSync(ctx context.Context, namespace, nam
 	}
 
 	cloneConditions := cloneInstance.Status.Conditions
+	if cloneConditions.StartTime == "" {
+		cloneConditions.SourceCluster = cloneInstance.Spec.SourceCluster
+		cloneConditions.DestCluster = cloneInstance.Spec.DestCluster
+		cloneConditions.Replicas = cloneInstance.Spec.Replicas
+		cloneConditions.ClusterType = cloneInstance.Spec.ClusterType
+		cloneConditions.SourceIPPort = cloneInstance.Spec.SourceIP + ":" + cloneInstance.Spec.SourcePort
+		cloneConditions.StartTime = getCurrentTime()
+	}
 	replicationInfo := make(map[string]string)
 	//获取目标集群DestCluster节点Ip
 	podlist := corev1.PodList{}
@@ -183,7 +192,6 @@ func (r *RedisCloneReconciler) CloneInfoSync(ctx context.Context, namespace, nam
 	}
 
 	if len(podlist.Items) == 0 {
-		cloneConditions.OffSet = ""
 		cloneConditions.CloneLag = "-1"
 		cloneConditions.CloneStatus = "down"
 		msg := fmt.Sprintf("CloneInfoSync can't find Dest Redis pods! %s:%s", namespacedName, cloneInstance.Spec.DestCluster)
@@ -208,7 +216,6 @@ func (r *RedisCloneReconciler) CloneInfoSync(ctx context.Context, namespace, nam
 			cloneConditions.CloneLag = replicationInfo["master_last_io_seconds_ago"]
 			cloneConditions.CloneStatus = replicationInfo["master_link_status"]
 		} else {
-			cloneConditions.OffSet = ""
 			cloneConditions.CloneLag = "-1"
 			cloneConditions.CloneStatus = "down"
 		}
