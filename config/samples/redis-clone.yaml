@@ -3,6 +3,8 @@ kind: RedisClone
 metadata:
   name: redisclone-wqj
   namespace: default
+  labels:
+    clone-type: redis-clone # 1. redis-clone 2. cloud-migration
 spec:
   # Add fields here
   sourceCluster: megaman
