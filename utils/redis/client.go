@@ -1,6 +1,7 @@
 package rediswqj
 
 import (
+	"fmt"
 	"github.com/go-redis/redis"
 	"net"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -38,4 +39,26 @@ func SlaveIsReady(ip, port, password string) (string, error) {
 		return info, err
 	}
 	return info, nil
+}
+
+func FailOverOperate(ip, mastername string) (string, error) {
+	options := &redis.Options{
+		Addr:     net.JoinHostPort(ip, sentinelPort),
+		Password: "",
+		DB:       0,
+	}
+	rClient := redis.NewClient(options)
+	defer rClient.Close()
+
+	cmd := redis.NewStringCmd("SENTINEL", "failover", mastername)
+	err := rClient.Process(cmd)
+	if err != nil {
+		return "failover failed", err
+	}
+
+	res, err := cmd.Result()
+	if err != nil {
+		return "failover failed", err
+	}
+	return fmt.Sprintf("failover succeeded: %s", res), nil
 }

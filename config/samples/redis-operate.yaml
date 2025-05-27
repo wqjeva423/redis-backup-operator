@@ -1,0 +1,8 @@
+apiVersion: operator.bobfintech.com/v1alpha1
+kind: Redisoperate
+metadata:
+  name: redisoperate-clustername
+spec:
+  # Add fields here
+  clusterName: wqj
+  failoverFlag: 1

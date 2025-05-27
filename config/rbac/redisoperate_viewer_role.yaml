@@ -1,0 +1,20 @@
+# permissions for end users to view redisoperates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: redisoperate-viewer-role
+rules:
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates/status
+  verbs:
+  - get

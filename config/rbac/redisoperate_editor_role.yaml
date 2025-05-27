@@ -1,0 +1,24 @@
+# permissions for end users to edit redisoperates.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: redisoperate-editor-role
+rules:
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates/status
+  verbs:
+  - get

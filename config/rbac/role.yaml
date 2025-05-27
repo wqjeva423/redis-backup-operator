@@ -4,7 +4,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   creationTimestamp: null
-  name: manager-role
+  name: redis-backup-operator
 rules:
 - apiGroups:
   - batch
@@ -126,6 +126,32 @@ rules:
   - operator.bobfintech.com
   resources:
   - redisclones/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - operator.bobfintech.com
+  resources:
+  - redisoperates/status
   verbs:
   - get
   - patch
